@@ -1,6 +1,6 @@
 /**
- * DFRobot Motor Driver (DFR0548) 日本語版 MakeCode 拡張機能
- * PCA9685 PWM波形自動出力方式
+ * DFRobot Motor Driver (DFR0548) MakeCode Extension
+ * PCA9685 PWM output control
  */
 //% color="#6b3ba7" weight=100 icon="\f1b9" block="DF-Motor"
 namespace dfmotor {
@@ -9,7 +9,7 @@ namespace dfmotor {
     const PRESCALE = 0xFE;
     const LED0_ON_L = 0x06;
 
-    // --- 列挙型の定義 ---
+    // --- Enums ---
 
     export enum Motors {
         //% block="M1"
@@ -23,9 +23,9 @@ namespace dfmotor {
     }
 
     export enum Dir {
-        //% block="正転"
+        //% block="CW"
         CW = 1,
-        //% block="逆転"
+        //% block="CCW"
         CCW = 2
     }
 
@@ -56,13 +56,12 @@ namespace dfmotor {
     }
 
     export enum StepperDir {
-        //% block="時計回り"
+        //% block="CW"
         CW = 1,
-        //% block="反時計回り"
+        //% block="CCW"
         CCW = 2
     }
 
-    // ステッピングモーターの設定保持クラス
     class StepperConfig {
         stepsPerRev: number;
         inverted: boolean;
@@ -78,7 +77,7 @@ namespace dfmotor {
     let stepperConfigs: StepperConfig[] = [new StepperConfig(), new StepperConfig()];
     let initialized = false;
 
-    // --- PCA9685 低レイヤー制御関数 ---
+    // --- PCA9685 Low Level Functions ---
 
     function i2cwrite(addr: number, reg: number, value: number) {
         let buf = pins.createBuffer(2);
@@ -125,16 +124,16 @@ namespace dfmotor {
     }
 
     // ==========================================
-    // 1. DCモーター制御ブロック
+    // 1. DC Motor Control
     // ==========================================
 
     /**
-     * DCモーターを回転させます。
-     * @param index モーターの指定 (M1~M4)
-     * @param direction 回転方向 (正転/逆転)
-     * @param speed スピード (0~255), eg: 150
+     * Run DC motor.
+     * @param index Motor index (M1~M4)
+     * @param direction Rotation direction (CW/CCW)
+     * @param speed Speed (0~255), eg: 150
      */
-    //% block="モーター %index|を %direction|方向に スピード %speed|で回す"
+    //% block="motor %index|run %direction|speed %speed"
     //% speed.min=0 speed.max=255 speed.defl=150
     //% inlineInputMode=inline
     //% weight=100
@@ -156,10 +155,10 @@ namespace dfmotor {
     }
 
     /**
-     * 特定のDCモーターを停止します。
-     * @param index モーターの指定 (M1~M4)
+     * Stop specific DC motor.
+     * @param index Motor index (M1~M4)
      */
-    //% block="モーター %index|を止める"
+    //% block="motor %index|stop"
     //% weight=95
     export function motorStop(index: Motors): void {
         if (!initialized) {
@@ -171,15 +170,15 @@ namespace dfmotor {
     }
 
     // ==========================================
-    // 2. サーボモーター制御ブロック
+    // 2. Servo Motor Control
     // ==========================================
 
     /**
-     * サーボモーターの角度を設定します。
-     * @param index サーボの指定 (S1~S8)
-     * @param degree 角度 (0~180度), eg: 90
+     * Set servo motor angle.
+     * @param index Servo index (S1~S8)
+     * @param degree Angle in degrees (0~180), eg: 90
      */
-    //% block="サーボ %index|の角度を %degree|度にする"
+    //% block="servo %index|set angle to %degree|°"
     //% degree.min=0 degree.max=180 degree.defl=90
     //% inlineInputMode=inline
     //% weight=80
@@ -194,17 +193,17 @@ namespace dfmotor {
     }
 
     // ==========================================
-    // 3. ステッピングモーター制御ブロック
+    // 3. Stepper Motor Control
     // ==========================================
 
     /**
-     * ステッピングモーターの基本設定を行います。
-     * @param index モーターの指定 (STEP1 / STEP2)
-     * @param stepsPerRev 1周のステップ数, eg: 2048
-     * @param inverted 回転方向を反転するか
-     * @param maxSpeed 最速速度 (ステップ/秒), eg: 400
+     * Configure stepper motor parameters.
+     * @param index Stepper index (STEP1 / STEP2)
+     * @param stepsPerRev Steps per revolution, eg: 2048
+     * @param inverted Invert rotation direction
+     * @param maxSpeed Max speed in steps/sec, eg: 400
      */
-    //% block="ステッピング %index| の初期設定 | 1周のステップ数: %stepsPerRev| 回転方向反転: %inverted| 最速速度(ステップ/秒): %maxSpeed"
+    //% block="stepper %index| config | steps/rev: %stepsPerRev| invert dir: %inverted| max speed(steps/s): %maxSpeed"
     //% inlineInputMode=external
     //% stepsPerRev.defl=2048 stepsPerRev.min=1
     //% maxSpeed.defl=400 maxSpeed.min=1
@@ -218,13 +217,13 @@ namespace dfmotor {
     }
 
     /**
-     * ステッピングモーターを回転させます（角度・速度の省略が可能）。
-     * @param index モーターの指定 (STEP1 / STEP2)
-     * @param dir 回転方向
-     * @param degree 回転角度 (度, 0で無限回転), eg: 360
-     * @param speed 速度 (ステップ/秒, 0で最速), eg: 200
+     * Move stepper motor.
+     * @param index Stepper index (STEP1 / STEP2)
+     * @param dir Rotation direction
+     * @param degree Angle in degrees (0 for continuous), eg: 360
+     * @param speed Speed in steps/sec (0 for max), eg: 200
      */
-    //% block="ステッピング %index| を %dir| に回す || 角度 %degree|度 速度 %speed|ステップ/秒"
+    //% block="stepper %index| move %dir| || degree %degree| speed(steps/s) %speed"
     //% expandableArgumentMode="toggle"
     //% inlineInputMode=inline
     //% degree.defl=0 degree.min=0
@@ -237,19 +236,15 @@ namespace dfmotor {
 
         let cfg = stepperConfigs[index - 1];
 
-        // 実効回転方向の決定
         let effectiveDir = dir;
         if (cfg.inverted) {
             effectiveDir = (dir === StepperDir.CW) ? StepperDir.CCW : StepperDir.CW;
         }
 
-        // 速度設定（0以下なら最速値を設定）
         let targetSpeed = (speed <= 0) ? cfg.maxSpeed : Math.min(speed, cfg.maxSpeed);
 
-        // PWM周波数を調整
         setFreq(targetSpeed);
 
-        // 1-2相励磁パルス出力
         let offset = (index - 1) * 4;
         if (effectiveDir === StepperDir.CW) {
             setPwm(offset + 0, 0, 1024);
@@ -263,7 +258,6 @@ namespace dfmotor {
             setPwm(offset + 3, 0, 1024);
         }
 
-        // 角度指定がある場合（0より大きい場合）は自動停止処理
         if (degree > 0) {
             let targetSteps = (degree / 360) * cfg.stepsPerRev;
             let durationMs = (targetSteps / targetSpeed) * 1000;
@@ -274,10 +268,10 @@ namespace dfmotor {
     }
 
     /**
-     * ステッピングモーターを停止します。
-     * @param index モーターの指定 (STEP1 / STEP2)
+     * Stop stepper motor.
+     * @param index Stepper index (STEP1 / STEP2)
      */
-    //% block="ステッピング %index|を止める"
+    //% block="stepper %index| stop"
     //% weight=60
     export function stopStepper(index: Steppers): void {
         if (!initialized) return;
