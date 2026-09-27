@@ -1,6 +1,6 @@
 {
     "name": "pxt-dfmotor-ja",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "DFRobot Micro:bit Motor Driver (DFR0548) 用の日本語版MakeCode拡張機能",
     "dependencies": {
         "core": "*",
