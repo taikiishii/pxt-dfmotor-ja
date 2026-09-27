@@ -3,9 +3,7 @@
  * PCA9685 PWM波形自動出力方式
  */
 //% color="#6b3ba7" weight=100 icon="\f1b9" block="DF-Motor"
-
 namespace dfmotor {
-    // (以降のコードは変更なし)namespace dfmotor {
     const PCA9685_ADDRESS = 0x59;
     const MODE1 = 0x00;
     const PRESCALE = 0xFE;
@@ -117,13 +115,13 @@ namespace dfmotor {
 
     function setPwm(channel: number, on: number, off: number): void {
         if (channel < 0 || channel > 15) return;
-        let buf2 = pins.createBuffer(5);
-        buf2[0] = LED0_ON_L + 4 * channel;
-        buf2[1] = on & 0xFF;
-        buf2[2] = (on >> 8) & 0xFF;
-        buf2[3] = off & 0xFF;
-        buf2[4] = (off >> 8) & 0xFF;
-        pins.i2cWriteBuffer(PCA9685_ADDRESS, buf2);
+        let buf = pins.createBuffer(5);
+        buf[0] = LED0_ON_L + 4 * channel;
+        buf[1] = on & 0xFF;
+        buf[2] = (on >> 8) & 0xFF;
+        buf[3] = off & 0xFF;
+        buf[4] = (off >> 8) & 0xFF;
+        pins.i2cWriteBuffer(PCA9685_ADDRESS, buf);
     }
 
     // ==========================================
@@ -167,20 +165,9 @@ namespace dfmotor {
         if (!initialized) {
             initPCA9685();
         }
-        let pnp2 = (index - 1) * 2;
-        setPwm(pnp2, 0, 0);
-        setPwm(pnp2 + 1, 0, 0);
-    }
-
-    /**
-     * すべてのDCモーターを停止します。
-     */
-    //% block="すべてのDCモーターを止める"
-    //% weight=90
-    export function motorStopAll(): void {
-        for (let idx = 1; idx <= 4; idx++) {
-            motorStop(idx);
-        }
+        let pnp = (index - 1) * 2;
+        setPwm(pnp, 0, 0);
+        setPwm(pnp + 1, 0, 0);
     }
 
     // ==========================================
@@ -248,16 +235,16 @@ namespace dfmotor {
             initPCA9685();
         }
 
-        let cfg2 = stepperConfigs[index - 1];
+        let cfg = stepperConfigs[index - 1];
 
         // 実効回転方向の決定
         let effectiveDir = dir;
-        if (cfg2.inverted) {
+        if (cfg.inverted) {
             effectiveDir = (dir === StepperDir.CW) ? StepperDir.CCW : StepperDir.CW;
         }
 
         // 速度設定（0以下なら最速値を設定）
-        let targetSpeed = (speed <= 0) ? cfg2.maxSpeed : Math.min(speed, cfg2.maxSpeed);
+        let targetSpeed = (speed <= 0) ? cfg.maxSpeed : Math.min(speed, cfg.maxSpeed);
 
         // PWM周波数を調整
         setFreq(targetSpeed);
@@ -278,7 +265,7 @@ namespace dfmotor {
 
         // 角度指定がある場合（0より大きい場合）は自動停止処理
         if (degree > 0) {
-            let targetSteps = (degree / 360) * cfg2.stepsPerRev;
+            let targetSteps = (degree / 360) * cfg.stepsPerRev;
             let durationMs = (targetSteps / targetSpeed) * 1000;
 
             basic.pause(durationMs);
@@ -294,9 +281,9 @@ namespace dfmotor {
     //% weight=60
     export function stopStepper(index: Steppers): void {
         if (!initialized) return;
-        let offset2 = (index - 1) * 4;
+        let offset = (index - 1) * 4;
         for (let i = 0; i < 4; i++) {
-            setPwm(offset2 + i, 0, 0);
+            setPwm(offset + i, 0, 0);
         }
     }
 }
