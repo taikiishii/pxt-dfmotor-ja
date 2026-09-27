@@ -77,6 +77,25 @@ namespace dfmotor {
     let stepperConfigs: StepperConfig[] = [new StepperConfig(), new StepperConfig()];
     let initialized = false;
 
+    // The PWM frequency is shared by all channels.
+    // Servos need 50Hz, steppers change it to set the speed.
+    const SERVO_FREQ = 50;
+    let currentFreq = 0;
+    let stepperRunning: boolean[] = [false, false];
+    // PWM value of each servo at 50Hz (S1~S8), 0 = not used
+    let servoPulses: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    let warned = false;
+
+    // Two-phase full step pattern (same as DFRobot pxt-motor Stepper 42)
+    const BYG_CHA_L = 3071;
+    const BYG_CHA_H = 1023;
+    const BYG_CHB_L = 1023;
+    const BYG_CHB_H = 3071;
+    const BYG_CHC_L = 4095;
+    const BYG_CHC_H = 2047;
+    const BYG_CHD_L = 2047;
+    const BYG_CHD_H = 4095;
+
     // --- PCA9685 Low Level Functions ---
 
     function i2cwrite(addr: number, reg: number, value: number) {
@@ -93,11 +112,13 @@ namespace dfmotor {
 
     function initPCA9685(): void {
         i2cwrite(PCA9685_ADDRESS, MODE1, 0x00);
-        setFreq(50);
+        setFreq(SERVO_FREQ);
         initialized = true;
     }
 
     function setFreq(freq: number): void {
+        if (freq === currentFreq) return;
+        currentFreq = freq;
         let prescaleval = 25000000;
         prescaleval /= 4096;
         prescaleval /= freq;
@@ -108,7 +129,7 @@ namespace dfmotor {
         i2cwrite(PCA9685_ADDRESS, MODE1, newmode);
         i2cwrite(PCA9685_ADDRESS, PRESCALE, prescale);
         i2cwrite(PCA9685_ADDRESS, MODE1, oldmode);
-        basic.pause(5);
+        control.waitMicros(5000);
         i2cwrite(PCA9685_ADDRESS, MODE1, oldmode | 0xa1);
     }
 
@@ -121,6 +142,57 @@ namespace dfmotor {
         buf[3] = off & 0xFF;
         buf[4] = (off >> 8) & 0xFF;
         pins.i2cWriteBuffer(PCA9685_ADDRESS, buf);
+    }
+
+    // STEP1 = M1+M2 (channel 4~7), STEP2 = M3+M4 (channel 0~3)
+    function setStepperPwm(index: Steppers, cw: boolean): void {
+        let base = (2 - index) * 4;
+        if (cw) {
+            setPwm(base + 3, BYG_CHA_L, BYG_CHA_H);
+            setPwm(base + 2, BYG_CHB_L, BYG_CHB_H);
+            setPwm(base + 1, BYG_CHC_L, BYG_CHC_H);
+            setPwm(base + 0, BYG_CHD_L, BYG_CHD_H);
+        } else {
+            setPwm(base + 3, BYG_CHC_L, BYG_CHC_H);
+            setPwm(base + 2, BYG_CHD_L, BYG_CHD_H);
+            setPwm(base + 1, BYG_CHA_L, BYG_CHA_H);
+            setPwm(base + 0, BYG_CHB_L, BYG_CHB_H);
+        }
+    }
+
+    function isStepperRunning(): boolean {
+        return stepperRunning[0] || stepperRunning[1];
+    }
+
+    // Stop servo pulses while the PWM frequency is not 50Hz
+    function releaseServos(): void {
+        for (let i = 0; i < 8; i++) {
+            if (servoPulses[i] > 0) {
+                setPwm(15 - i, 0, 0);
+            }
+        }
+    }
+
+    function restoreServos(): void {
+        for (let i = 0; i < 8; i++) {
+            if (servoPulses[i] > 0) {
+                setPwm(15 - i, 0, servoPulses[i]);
+            }
+        }
+    }
+
+    // Show "!" on the LED screen once when servo and stepper are used at the same time
+    function warnConflict(): void {
+        if (warned) return;
+        warned = true;
+        serial.writeLine("DF-Motor: servo and stepper cannot be used at the same time");
+        basic.showLeds(`
+            . . # . .
+            . . # . .
+            . . # . .
+            . . . . .
+            . . # . .
+            `, 0);
     }
 
     // ==========================================
@@ -192,6 +264,12 @@ namespace dfmotor {
         // 0.6ms ~ 2.4ms at 50Hz (same as DFRobot pxt-motor)
         let us = 600 + (degree * 1800) / 180;
         let pulse = Math.floor(us * 4096 / 20000);
+        servoPulses[index - 1] = pulse;
+        if (isStepperRunning()) {
+            // applied when the stepper stops
+            warnConflict();
+            return;
+        }
         // S1 = channel 15 ... S8 = channel 8
         let channel = 16 - index;
         setPwm(channel, 0, pulse);
@@ -248,24 +326,18 @@ namespace dfmotor {
 
         let targetSpeed = (speed <= 0) ? cfg.maxSpeed : Math.min(speed, cfg.maxSpeed);
 
-        setFreq(targetSpeed);
+        // 1 PWM cycle = 4 full steps. PCA9685 works from 24Hz to 1526Hz.
+        let freq = Math.max(24, Math.min(1526, Math.round(targetSpeed / 4)));
 
-        let offset = (index - 1) * 4;
-        if (effectiveDir === StepperDir.CW) {
-            setPwm(offset + 0, 0, 1024);
-            setPwm(offset + 1, 1024, 2048);
-            setPwm(offset + 2, 2048, 3072);
-            setPwm(offset + 3, 3072, 4095);
-        } else {
-            setPwm(offset + 0, 3072, 4095);
-            setPwm(offset + 1, 2048, 3072);
-            setPwm(offset + 2, 1024, 2048);
-            setPwm(offset + 3, 0, 1024);
-        }
+        // servos can not keep their angle while the frequency is not 50Hz
+        releaseServos();
+        stepperRunning[index - 1] = true;
+        setFreq(freq);
+        setStepperPwm(index, effectiveDir === StepperDir.CW);
 
         if (degree > 0) {
             let targetSteps = (degree / 360) * cfg.stepsPerRev;
-            let durationMs = (targetSteps / targetSpeed) * 1000;
+            let durationMs = (targetSteps / (freq * 4)) * 1000;
 
             basic.pause(durationMs);
             stopStepper(index);
@@ -280,9 +352,15 @@ namespace dfmotor {
     //% weight=60
     export function stopStepper(index: Steppers): void {
         if (!initialized) return;
-        let offset = (index - 1) * 4;
+        let base = (2 - index) * 4;
         for (let i = 0; i < 4; i++) {
-            setPwm(offset + i, 0, 0);
+            setPwm(base + i, 0, 0);
+        }
+        stepperRunning[index - 1] = false;
+        if (!isStepperRunning()) {
+            // back to 50Hz and move servos to their last angle
+            setFreq(SERVO_FREQ);
+            restoreServos();
         }
     }
 }
