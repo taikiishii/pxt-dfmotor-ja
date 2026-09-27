@@ -112,8 +112,20 @@ namespace dfmotor {
 
     function initPCA9685(): void {
         i2cwrite(PCA9685_ADDRESS, MODE1, 0x00);
+        currentFreq = 0;
         setFreq(SERVO_FREQ);
         initialized = true;
+        // after a power cycle all outputs are off
+        stepperRunning[0] = false;
+        stepperRunning[1] = false;
+        restoreServos();
+    }
+
+    // The board can be switched off and on while the micro:bit keeps running.
+    // PCA9685 is in sleep mode after power on, so set it up again.
+    function ensureInit(): void {
+        if (initialized && (i2cread(PCA9685_ADDRESS, MODE1) & 0x10) === 0) return;
+        initPCA9685();
     }
 
     function setFreq(freq: number): void {
@@ -210,9 +222,7 @@ namespace dfmotor {
     //% inlineInputMode=inline
     //% weight=100
     export function motorRun(index: Motors, direction: Dir, speed: number): void {
-        if (!initialized) {
-            initPCA9685();
-        }
+        ensureInit();
         speed = Math.max(0, Math.min(255, speed));
         let pwm = Math.floor(speed * 16);
 
@@ -235,9 +245,7 @@ namespace dfmotor {
     //% block="motor %index|stop"
     //% weight=95
     export function motorStop(index: Motors): void {
-        if (!initialized) {
-            initPCA9685();
-        }
+        ensureInit();
         let pn = (4 - index) * 2;
         setPwm(pn, 0, 0);
         setPwm(pn + 1, 0, 0);
@@ -257,9 +265,7 @@ namespace dfmotor {
     //% inlineInputMode=inline
     //% weight=80
     export function servoRun(index: Servos, degree: number): void {
-        if (!initialized) {
-            initPCA9685();
-        }
+        ensureInit();
         degree = Math.max(0, Math.min(180, degree));
         // 0.6ms ~ 2.4ms at 50Hz (same as DFRobot pxt-motor)
         let us = 600 + (degree * 1800) / 180;
@@ -313,9 +319,7 @@ namespace dfmotor {
     //% speed.defl=0 speed.min=0
     //% weight=65
     export function moveStepper(index: Steppers, dir: StepperDir, degree: number, speed: number): void {
-        if (!initialized) {
-            initPCA9685();
-        }
+        ensureInit();
 
         let cfg = stepperConfigs[index - 1];
 
@@ -352,6 +356,7 @@ namespace dfmotor {
     //% weight=60
     export function stopStepper(index: Steppers): void {
         if (!initialized) return;
+        ensureInit();
         let base = (2 - index) * 4;
         for (let i = 0; i < 4; i++) {
             setPwm(base + i, 0, 0);
