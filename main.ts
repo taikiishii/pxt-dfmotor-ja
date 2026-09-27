@@ -86,6 +86,8 @@ namespace dfmotor {
 
     // current PWM frequency, 0 = the chip is not set up yet
     let pwmHz = 0;
+    // frequency the chip really runs at (PRE_SCALE is an integer)
+    let actualHz = 0;
 
     function writeReg(reg: number, value: number): void {
         let buf = pins.createBuffer(2);
@@ -108,15 +110,23 @@ namespace dfmotor {
         control.waitMicros(500);    // oscillator start up time
         writeReg(REG_MODE1, MODE1_AI | MODE1_RESTART);
         pwmHz = hz;
+        actualHz = OSC_HZ / (PERIOD * (prescale + 1));
+    }
+
+    // Write on/off pairs to consecutive channels in one I2C transfer.
+    // The chip applies all of them together at the I2C STOP.
+    function setChannels(first: number, counts: number[]): void {
+        let buf = pins.createBuffer(1 + 2 * counts.length);
+        buf.setNumber(NumberFormat.UInt8LE, 0, REG_LED0_ON_L + 4 * first);
+        for (let i = 0; i < counts.length; i++) {
+            buf.setNumber(NumberFormat.UInt16LE, 1 + 2 * i, counts[i]);
+        }
+        pins.i2cWriteBuffer(I2C_ADDR, buf);
     }
 
     // output goes high at count `on` and low at count `off` in every cycle
     function setChannel(channel: number, on: number, off: number): void {
-        let buf = pins.createBuffer(5);
-        buf.setNumber(NumberFormat.UInt8LE, 0, REG_LED0_ON_L + 4 * channel);
-        buf.setNumber(NumberFormat.UInt16LE, 1, on);
-        buf.setNumber(NumberFormat.UInt16LE, 3, off);
-        pins.i2cWriteBuffer(I2C_ADDR, buf);
+        setChannels(channel, [on, off]);
     }
 
     function channelOff(channel: number): void {
@@ -150,6 +160,7 @@ namespace dfmotor {
 
     let stepperConfigs: StepperConfig[] = [new StepperConfig(), new StepperConfig()];
     let stepperActive: boolean[] = [false, false];
+    let stepperCw: boolean[] = [false, false];
     // last servo pulse for S1..S8 in counts at 50Hz, 0 = never used
     let servoCounts: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
     let warningShown = false;
@@ -263,20 +274,26 @@ namespace dfmotor {
     // 3. Stepper Motor Control
     // ==========================================
 
-    // STEP1: coil A = M1, coil B = M2 / STEP2: coil A = M3, coil B = M4
-    function coilChannel(index: Steppers, coil: number): number {
-        let motor = (index == Steppers.M1 ? 1 : 3) + coil;
-        return motorChannel(motor);
+    // STEP1 uses M1 + M2 (channel 4~7), STEP2 uses M3 + M4 (channel 0~3).
+    // Coil A is on M1 / M3, coil B is on M2 / M4 (the lower channels).
+    function stepperFirstChannel(index: Steppers): number {
+        return motorChannel(index == Steppers.M1 ? 2 : 4);
     }
 
-    // Two-phase full step: each coil is a square wave that is forward for half
-    // a PWM cycle from `quarter` (0~3) and reverse for the other half.
-    // Coil B is a quarter cycle apart from coil A, so one cycle = 4 full steps.
-    function driveCoil(low: number, quarter: number): void {
+    // on/off counts for the low and high input of one coil. The coil is
+    // forward for half a PWM cycle from `quarter` (0~3) and reverse for the rest.
+    function coilCounts(quarter: number): number[] {
         let fwd = quarter * PERIOD / 4;
         let rev = ((quarter + 2) % 4) * PERIOD / 4;
-        setChannel(low + 1, fwd, rev);
-        setChannel(low, rev, fwd);
+        return [rev, fwd, fwd, rev];
+    }
+
+    // Two-phase full step: coil B is a quarter cycle apart from coil A,
+    // so one PWM cycle = 4 full steps. All 4 channels change at once.
+    function driveStepper(index: Steppers, cw: boolean): void {
+        let coilB = coilCounts(cw ? 0 : 3);
+        let coilA = coilCounts(cw ? 3 : 0);
+        setChannels(stepperFirstChannel(index), coilB.concat(coilA));
     }
 
     /**
@@ -319,17 +336,22 @@ namespace dfmotor {
         let stepsPerSec = speed > 0 ? Math.min(speed, cfg.maxSpeed) : cfg.maxSpeed;
         let hz = Math.constrain(Math.round(stepsPerSec / 4), MIN_HZ, MAX_HZ);
 
-        // stop servo pulses before the frequency changes
-        stepperActive[index - 1] = true;
-        updateServoOutputs();
-        if (hz != pwmHz) setPwmHz(hz);
-
-        driveCoil(coilChannel(index, 0), cw ? 3 : 0);
-        driveCoil(coilChannel(index, 1), cw ? 0 : 3);
+        // Already turning the same way at the same speed (e.g. called again
+        // in "forever"): keep the waveform as it is.
+        let i = index - 1;
+        let turning = stepperActive[i] && stepperCw[i] == cw && hz == pwmHz;
+        if (!turning) {
+            stepperActive[i] = true;
+            stepperCw[i] = cw;
+            // stop servo pulses before the frequency changes
+            updateServoOutputs();
+            if (hz != pwmHz) setPwmHz(hz);
+            driveStepper(index, cw);
+        }
 
         if (degree > 0) {
             let steps = degree * cfg.stepsPerRev / 360;
-            basic.pause(steps * 1000 / (hz * 4));
+            basic.pause(steps * 1000 / (actualHz * 4));
             stopStepper(index);
         }
     }
@@ -343,11 +365,12 @@ namespace dfmotor {
     export function stopStepper(index: Steppers): void {
         if (pwmHz == 0) return;
         ensureReady();
-        for (let coil = 0; coil < 2; coil++) {
-            let low = coilChannel(index, coil);
-            channelOff(low);
-            channelOff(low + 1);
+        let off: number[] = [];
+        for (let ch = 0; ch < 4; ch++) {
+            off.push(0);
+            off.push(FULL_OFF);
         }
+        setChannels(stepperFirstChannel(index), off);
         stepperActive[index - 1] = false;
         if (!anyStepperActive()) {
             if (pwmHz != SERVO_HZ) setPwmHz(SERVO_HZ);
