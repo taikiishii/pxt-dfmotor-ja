@@ -1,4 +1,11 @@
+/**
+ * DFRobot Motor Driver (DFR0548) 日本語版 MakeCode 拡張機能
+ * PCA9685 PWM波形自動出力方式
+ */
+//% color="#6b3ba7" weight=100 icon="\f1b9" block="DF-Motor"
+
 namespace dfmotor {
+    // (以降のコードは変更なし)namespace dfmotor {
     const PCA9685_ADDRESS = 0x59;
     const MODE1 = 0x00;
     const PRESCALE = 0xFE;
