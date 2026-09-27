@@ -1,0 +1,13 @@
+{
+    "dfmotor|block": "DFモーター",
+    "dfmotor.Dir.CW|block": "正転",
+    "dfmotor.Dir.CCW|block": "逆転",
+    "dfmotor.StepperDir.CW|block": "時計回り",
+    "dfmotor.StepperDir.CCW|block": "反時計回り",
+    "dfmotor.motorRun|block": "モーター %index|を %direction|方向に スピード %speed|で回す",
+    "dfmotor.motorStop|block": "モーター %index|を止める",
+    "dfmotor.servoRun|block": "サーボ %index|の角度を %degree|度にする",
+    "dfmotor.configStepper|block": "ステッピング %index| の初期設定 | 1周のステップ数: %stepsPerRev| 回転方向反転: %inverted| 最速速度(ステップ/秒): %maxSpeed",
+    "dfmotor.moveStepper|block": "ステッピング %index| を %dir| に回す || 角度 %degree|度 速度 %speed|ステップ/秒",
+    "dfmotor.stopStepper|block": "ステッピング %index|を止める"
+}
