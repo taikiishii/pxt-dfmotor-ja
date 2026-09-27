@@ -54,6 +54,15 @@ micro:bit を USB につないだまま拡張ボードのスイッチを OFF→O
 
 ---
 
+## ライセンス
+
+v0.1.0 以降は [MIT License](LICENSE.txt) です。
+
+v0.0.5 までの版は、DFRobot の [pxt-motor](https://github.com/DFRobot/pxt-motor)（GNU Lesser General Public License）をもとに作ったものです。
+v0.1.0 で、PCA9685 のデータシートと基板の仕様をもとにコードを書き直しました。
+
+---
+
 #### メタデータ (検索・レンダリング用)
 
 * for PXT/microbit
