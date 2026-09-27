@@ -144,13 +144,15 @@ namespace dfmotor {
         speed = Math.max(0, Math.min(255, speed));
         let pwm = Math.floor(speed * 16);
 
-        let pnp = (index - 1) * 2;
+        // M1 = channel 6/7 ... M4 = channel 0/1 (same as DFRobot pxt-motor)
+        let pn = (4 - index) * 2;
+        let pp = pn + 1;
         if (direction === Dir.CW) {
-            setPwm(pnp, 0, pwm);
-            setPwm(pnp + 1, 0, 0);
+            setPwm(pp, 0, pwm);
+            setPwm(pn, 0, 0);
         } else {
-            setPwm(pnp, 0, 0);
-            setPwm(pnp + 1, 0, pwm);
+            setPwm(pp, 0, 0);
+            setPwm(pn, 0, pwm);
         }
     }
 
@@ -164,9 +166,9 @@ namespace dfmotor {
         if (!initialized) {
             initPCA9685();
         }
-        let pnp = (index - 1) * 2;
-        setPwm(pnp, 0, 0);
-        setPwm(pnp + 1, 0, 0);
+        let pn = (4 - index) * 2;
+        setPwm(pn, 0, 0);
+        setPwm(pn + 1, 0, 0);
     }
 
     // ==========================================
