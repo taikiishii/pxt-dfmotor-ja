@@ -63,6 +63,13 @@ micro:bit を USB につないだまま拡張ボードのスイッチを OFF→O
 
 ---
 
+## 参考情報
+
+* [micro:Driver - Driver Expansion Board for micro:bit (DFR0548) | DFRobot Wiki](https://wiki.dfrobot.com/dfr0548/) … メーカーの製品情報
+* [Gravity - micro:bit用モータードライバ拡張基板 | スイッチサイエンス](https://www.switch-science.com/products/4016) … 国内の販売ページ
+
+---
+
 ## ライセンス
 
 v0.1.0 以降は [MIT License](LICENSE.txt) です。
