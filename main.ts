@@ -65,6 +65,13 @@ namespace dfmotor {
         CCW = 2
     }
 
+    export enum StepperWait {
+        //% block="wait until done"
+        Wait = 1,
+        //% block="don't wait"
+        NoWait = 2
+    }
+
     // --- PCA9685 (values from the datasheet) ---
 
     const I2C_ADDR = 0x40;
@@ -161,6 +168,8 @@ namespace dfmotor {
     let stepperConfigs: StepperConfig[] = [new StepperConfig(), new StepperConfig()];
     let stepperActive: boolean[] = [false, false];
     let stepperCw: boolean[] = [false, false];
+    // incremented on every move, so an older move does not stop a newer one
+    let stepperMoveId: number[] = [0, 0];
     // last servo pulse for S1..S8 in counts at 50Hz, 0 = never used
     let servoCounts: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
     let warningShown = false;
@@ -322,14 +331,15 @@ namespace dfmotor {
      * @param dir Rotation direction
      * @param degree Angle in degrees (0 for continuous), eg: 360
      * @param speed Speed in steps/sec (0 for max), eg: 200
+     * @param wait Wait until the move is done, or go to the next block at once
      */
-    //% block="stepper %index| move %dir| || degree %degree| speed(steps/s) %speed"
+    //% block="stepper %index| move %dir| || degree %degree| speed(steps/s) %speed| %wait"
     //% expandableArgumentMode="toggle"
     //% inlineInputMode=inline
     //% degree.defl=0 degree.min=0
     //% speed.defl=0 speed.min=0
     //% weight=65
-    export function moveStepper(index: Steppers, dir: StepperDir, degree: number, speed: number): void {
+    export function moveStepper(index: Steppers, dir: StepperDir, degree: number, speed: number, wait: StepperWait = StepperWait.Wait): void {
         ensureReady();
         let cfg = stepperConfigs[index - 1];
         let cw = (dir == StepperDir.CW) != cfg.inverted;
@@ -349,10 +359,19 @@ namespace dfmotor {
             driveStepper(index, cw);
         }
 
-        if (degree > 0) {
-            let steps = degree * cfg.stepsPerRev / 360;
-            basic.pause(steps * 1000 / (actualHz * 4));
-            stopStepper(index);
+        stepperMoveId[i]++;
+        if (degree <= 0) return;    // keep turning until "stop"
+
+        let moveId = stepperMoveId[i];
+        let ms = (degree * cfg.stepsPerRev / 360) * 1000 / (actualHz * 4);
+        let finish = () => {
+            basic.pause(ms);
+            if (stepperMoveId[i] == moveId) stopStepper(index);
+        };
+        if (wait == StepperWait.NoWait) {
+            control.inBackground(finish);
+        } else {
+            finish();
         }
     }
 
@@ -372,6 +391,7 @@ namespace dfmotor {
         }
         setChannels(stepperFirstChannel(index), off);
         stepperActive[index - 1] = false;
+        stepperMoveId[index - 1]++;
         if (!anyStepperActive()) {
             if (pwmHz != SERVO_HZ) setPwmHz(SERVO_HZ);
             updateServoOutputs();
