@@ -4,7 +4,7 @@
  */
 //% color="#6b3ba7" weight=100 icon="\f1b9" block="DF-Motor"
 namespace dfmotor {
-    const PCA9685_ADDRESS = 0x59;
+    const PCA9685_ADDRESS = 0x40;
     const MODE1 = 0x00;
     const PRESCALE = 0xFE;
     const LED0_ON_L = 0x06;
@@ -187,8 +187,11 @@ namespace dfmotor {
             initPCA9685();
         }
         degree = Math.max(0, Math.min(180, degree));
-        let pulse = Math.floor(102 + (degree * 410) / 180);
-        let channel = index + 7;
+        // 0.6ms ~ 2.4ms at 50Hz (same as DFRobot pxt-motor)
+        let us = 600 + (degree * 1800) / 180;
+        let pulse = Math.floor(us * 4096 / 20000);
+        // S1 = channel 15 ... S8 = channel 8
+        let channel = 16 - index;
         setPwm(channel, 0, pulse);
     }
 
